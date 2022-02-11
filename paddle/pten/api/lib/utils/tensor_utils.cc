@@ -76,7 +76,7 @@ pten::Scalar MakePtenScalar(const paddle::framework::Tensor& src) {
 }
 
 pten::Scalar MakePtenScalarFromVar(const framework::Variable& variable) {
-  auto expected_place = pten::TransToFluidPlace(pten::Backend::CPU);
+  auto expected_place = pten::TransToPtenPlace(pten::Backend::CPU);
   if (variable.IsType<framework::LoDTensor>()) {
     const auto& tensor = variable.Get<framework::LoDTensor>();
     if (!platform::is_same_place(tensor.place(), expected_place)) {
@@ -110,7 +110,7 @@ pten::ScalarArray MakePtenScalarArray(const paddle::framework::Tensor& src) {
 
 pten::ScalarArray MakePtenScalarArrayFromVar(
     const framework::Variable& variable) {
-  auto expected_place = pten::TransToFluidPlace(pten::Backend::CPU);
+  auto expected_place = pten::TransToPtenPlace(pten::Backend::CPU);
   if (variable.IsType<framework::LoDTensor>()) {
     const auto& tensor = variable.Get<framework::LoDTensor>();
     if (!platform::is_same_place(tensor.place(), expected_place)) {
@@ -133,7 +133,7 @@ pten::ScalarArray MakePtenScalarArrayFromVarList(
   if (variable_list.size() == 0) {
     return pten::ScalarArray();
   }
-  auto expected_place = pten::TransToFluidPlace(pten::Backend::CPU);
+  auto expected_place = pten::TransToPtenPlace(pten::Backend::CPU);
 
   paddle::framework::proto::VarType::Type data_type;
   auto* first_var = variable_list.front();
@@ -198,12 +198,25 @@ pten::ScalarArray MakePtenScalarArrayFromVarList(
   return {vector_data};
 }
 
-void ResetTensorByArgDef(pten::DenseTensor* dst,
-                         const pten::TensorArgDef& arg_def) {
+void ResetTensorDtypeAndLayoutByArgDef(pten::TensorBase* dst,
+                                       const pten::TensorArgDef& arg_def) {
   VLOG(5) << "ResetTensor by TensorArgDef.";
-  auto* meta = pten::DenseTensorUtils::GetMutableMeta(dst);
-  meta->dtype = arg_def.dtype;
-  meta->layout = arg_def.layout;
+  if (pten::DenseTensor::classof(dst)) {
+    auto* dense_t = static_cast<pten::DenseTensor*>(dst);
+    auto* meta = pten::DenseTensorUtils::GetMutableMeta(dense_t);
+    meta->dtype = arg_def.dtype;
+    meta->layout = arg_def.layout;
+  } else if (pten::SelectedRows::classof(dst)) {
+    auto* selected_rows = static_cast<pten::SelectedRows*>(dst);
+    auto* meta =
+        pten::DenseTensorUtils::GetMutableMeta(selected_rows->mutable_value());
+    meta->dtype = arg_def.dtype;
+    meta->layout = arg_def.layout;
+  } else {
+    PADDLE_THROW(pten::errors::Unimplemented(
+        "Unsupported tensor type is received when reseting tensor dtype and "
+        "layout by argument definition."));
+  }
 }
 
 }  // namespace experimental
